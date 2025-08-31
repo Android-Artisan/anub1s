@@ -1,4 +1,11 @@
-from gui.welcome_screen import run_app
+import sys
+from PyQt6.QtWidgets import QApplication
+from gui.welcome_screen import WelcomeScreen
 
 if __name__ == "__main__":
-    run_app()
+    app = QApplication(sys.argv)
+
+    welcome_win = WelcomeScreen()
+    welcome_win.show()
+
+    sys.exit(app.exec())
