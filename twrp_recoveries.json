@@ -1,12 +1,9 @@
 {
   "devices": {
     "SM-G986B": {
-      "codename": "y2s",
       "twrp_images": {
-        "stable": "https://store4.gofile.io/download/web/9628bd09-2469-4bab-b19d-adad36ae3966/ExtremeROM_Nexus_G985F_G986B_TWRP_OdinPack_v2.tar",
-        "latest": "https://store4.gofile.io/download/web/9628bd09-2469-4bab-b19d-adad36ae3966/ExtremeROM_Nexus_G985F_G986B_TWRP_OdinPack_v2.tar"
+        "stable_tar": "https://store4.gofile.io/download/web/9628bd09-2469-4bab-b19d-adad36ae3966/ExtremeROM_Nexus_G985F_G986B_TWRP_OdinPack_v2.tar"
       }
     }
   }
 }
-
