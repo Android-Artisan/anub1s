@@ -1,0 +1,52 @@
+{
+  "SM-G980F": [
+    {
+      "name": "ExtremeROM OneUI 7 Port",
+      "url": "https://yourhost.com/roms/SM-G980F/extremerom-oneui7.zip"
+    },
+    {
+      "name": "[EOL] ExtremeROM OneUI 6.1 Port",
+      "url": "https://yourhost.com/roms/SM-G980F/extremerom-oneui6.1.zip"
+    }
+  ],
+  "SM-G981B": [
+    {
+      "name": "ExtremeROM OneUI 7 Port",
+      "url": "https://yourhost.com/roms/SM-G981B/extremerom-oneui7.zip"
+    },
+    {
+      "name": "[EOL] ExtremeROM OneUI 6.1 Port",
+      "url": "https://yourhost.com/roms/SM-G981B/extremerom-oneui6.1.zip"
+    }
+  ],
+  "SM-G985F": [
+    {
+      "name": "ExtremeROM OneUI 7 Port",
+      "url": "https://yourhost.com/roms/SM-G985F/extremerom-oneui7.zip"
+    },
+    {
+      "name": "[EOL] ExtremeROM OneUI 6.1 Port",
+      "url": "https://yourhost.com/roms/SM-G985F/extremerom-oneui6.1.zip"
+    }
+  ],
+  "SM-G986B": [
+    {
+      "name": "ExtremeROM OneUI 7 Port",
+      "url": "https://yourhost.com/roms/SM-G986B/extremerom-oneui7.zip"
+    },
+    {
+      "name": "[EOL] ExtremeROM OneUI 6.1 Port",
+      "url": "https://yourhost.com/roms/SM-G986B/extremerom-oneui6.1.zip"
+    }
+  ],
+  "SM-G988B": [
+    {
+      "name": "ExtremeROM OneUI 7 Port",
+      "url": "https://yourhost.com/roms/SM-G988B/extremerom-oneui7.zip"
+    },
+    {
+      "name": "[EOL] ExtremeROM OneUI 6.1 Port",
+      "url": "https://yourhost.com/roms/SM-G988B/extremerom-oneui6.1.zip"
+    }
+  ]
+}
