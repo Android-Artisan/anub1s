@@ -1,39 +1,31 @@
 import subprocess
-import json
 
-def get_device_info():
-    """
-    Returns device info dict if Samsung device connected via adb, else None.
-    """
+def run_adb_command(args: list[str]) -> str | None:
+    """Run adb command with given args and return stdout if successful, else None."""
     try:
-        # Check connected devices
-        devices_output = subprocess.check_output(['adb', 'devices']).decode()
-        lines = devices_output.strip().splitlines()
-        if len(lines) <= 1:
-            return None
-        # Assume first device listed is target
-        device_line = lines[1]
-        if "device" not in device_line:
-            return None
-
-        # Get device model
-        model = subprocess.check_output(['adb', 'shell', 'getprop', 'ro.product.model']).decode().strip()
-        manufacturer = subprocess.check_output(['adb', 'shell', 'getprop', 'ro.product.manufacturer']).decode().strip()
-        if "samsung" not in manufacturer.lower():
-            return None
-
-        # Get Android and One UI versions
-        android_version = subprocess.check_output(['adb', 'shell', 'getprop', 'ro.build.version.release']).decode().strip()
-        oneui_version = subprocess.check_output(['adb', 'shell', 'getprop', 'ro.build.version.oneui']).decode().strip()
-        chipset = subprocess.check_output(['adb', 'shell', 'getprop', 'ro.board.platform']).decode().strip()
-
-        return {
-            "device": model,
-            "manufacturer": manufacturer,
-            "android_version": android_version,
-            "oneui_version": oneui_version,
-            "chipset": chipset
-        }
-    except Exception:
+        result = subprocess.run(["adb"] + args, capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            return result.stdout.strip()
         return None
+    except Exception as e:
+        print(f"[run_adb_command] Exception: {e}")
+        return None
+
+def get_device_info() -> dict | None:
+    """
+    Get basic info about connected device via adb.
+    Returns dict with keys: device, chipset, oneui_version or None if no device.
+    """
+    device = run_adb_command(["shell", "getprop", "ro.product.device"])
+    if not device:
+        return None
+
+    chipset = run_adb_command(["shell", "getprop", "ro.board.platform"]) or "Unknown"
+    oneui_ver = run_adb_command(["shell", "getprop", "ro.build.version.oneui"])
+
+    return {
+        "device": device,
+        "chipset": chipset,
+        "oneui_version": oneui_ver if oneui_ver else "",
+    }
 

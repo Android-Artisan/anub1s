@@ -1,12 +1,12 @@
 import os
-import sys
 import platform
-import shutil
-import zipfile
-import tarfile
-import requests
 import stat
+import zipfile
+from shutil import which
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, '..'))
+HEIMDAL_DIR = os.path.join(ROOT_DIR, "heimdal")
 CACHE_DIR = os.path.join(os.path.expanduser("~"), ".anub1s_tools")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
@@ -14,112 +14,65 @@ def is_executable(path):
     return os.path.isfile(path) and os.access(path, os.X_OK)
 
 def find_executable(name):
-    """Try system PATH first"""
-    from shutil import which
     path = which(name)
-    if path and is_executable(path):
-        return path
-    return None
-
-def download_file(url, dest):
-    try:
-        r = requests.get(url, stream=True, timeout=60)
-        r.raise_for_status()
-        with open(dest, "wb") as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-        return True
-    except Exception:
-        return False
+    return path if path and is_executable(path) else None
 
 def make_executable(path):
     if platform.system() != "Windows":
-        st = os.stat(path)
-        os.chmod(path, st.st_mode | stat.S_IEXEC)
+        os.chmod(path, os.stat(path).st_mode | stat.S_IEXEC)
 
 def get_adb_path():
     adb_name = "adb.exe" if platform.system() == "Windows" else "adb"
-    adb_path = find_executable(adb_name)
-    if adb_path:
-        return adb_path
+    return find_executable(adb_name)
 
-    # Not found, download and extract
-    url = None
-    if platform.system() == "Windows":
-        url = "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
-    elif platform.system() == "Darwin":
-        url = "https://dl.google.com/android/repository/platform-tools-latest-darwin.zip"
-    elif platform.system() == "Linux":
-        url = "https://dl.google.com/android/repository/platform-tools-latest-linux.zip"
-    else:
-        return None
-
-    zip_path = os.path.join(CACHE_DIR, "platform-tools.zip")
-    if not os.path.exists(zip_path):
-        if not download_file(url, zip_path):
-            return None
-
-    extract_dir = os.path.join(CACHE_DIR, "platform-tools")
-    if not os.path.exists(extract_dir):
+def extract_zip(zip_path, extract_to):
+    try:
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
-            zip_ref.extractall(CACHE_DIR)
-
-    possible_path = os.path.join(extract_dir, adb_name)
-    if os.path.exists(possible_path):
-        make_executable(possible_path)
-        return possible_path
-
-    return None
+            zip_ref.extractall(extract_to)
+        return True
+    except Exception as e:
+        print("Error extracting zip:", e)
+        return False
 
 def get_heimdall_path():
-    heimdall_name = "heimdall.exe" if platform.system() == "Windows" else "heimdall"
-    heimdall_path = find_executable(heimdall_name)
-    if heimdall_path:
-        return heimdall_path
-
-    # Download heimdall binaries from a reliable source or pre-hosted URL
-    # (For demo: GitHub releases or your own hosting)
-    url = None
     system = platform.system()
-    arch = platform.machine()
+    archive_map = {
+        "Linux": "linux-build.zip",
+        "Windows": "win64-build.zip",
+        "Darwin": "macos-build.zip"
+    }
 
-    if system == "Windows":
-        url = "https://github.com/Benjamin-Dobell/Heimdall/releases/download/v1.4.2/Heimdall-v1.4.2-win64.zip"
-    elif system == "Linux":
-        # Check arch for amd64 vs arm64 - here simplified
-        url = "https://github.com/Benjamin-Dobell/Heimdall/releases/download/v1.4.2/heimdall-linux-1.4.2.tar.gz"
-    elif system == "Darwin":
-        url = "https://github.com/Benjamin-Dobell/Heimdall/releases/download/v1.4.2/heimdall-mac-1.4.2.tar.gz"
-    else:
+    heimdall_name = "heimdall.exe" if system == "Windows" else "heimdall"
+    archive_name = archive_map.get(system)
+    if not archive_name:
+        print("Unsupported OS for Heimdall.")
         return None
 
-    archive_path = os.path.join(CACHE_DIR, "heimdall_archive")
-    if not os.path.exists(archive_path):
-        archive_path += ".zip" if system == "Windows" else ".tar.gz"
-        if not download_file(url, archive_path):
-            return None
+    zip_path = os.path.join(HEIMDAL_DIR, archive_name)
+    if not os.path.exists(zip_path):
+        print(f"Missing local Heimdall archive: {zip_path}")
+        return None
 
-    extract_dir = os.path.join(CACHE_DIR, "heimdall")
-    if not os.path.exists(extract_dir):
+    extract_dir = os.path.join(CACHE_DIR, f"heimdall-{system.lower()}")
+    heimdall_path = os.path.join(extract_dir, heimdall_name)
+
+    if not os.path.exists(heimdall_path):
         os.makedirs(extract_dir, exist_ok=True)
-        try:
-            if archive_path.endswith(".zip"):
-                with zipfile.ZipFile(archive_path, "r") as zip_ref:
-                    zip_ref.extractall(extract_dir)
-            else:
-                import tarfile
-                with tarfile.open(archive_path, "r:gz") as tar_ref:
-                    tar_ref.extractall(extract_dir)
-        except Exception:
+        if not extract_zip(zip_path, extract_dir):
             return None
 
-    # Find heimdall binary inside extract_dir recursively
-    for root, dirs, files in os.walk(extract_dir):
-        if heimdall_name in files:
-            path = os.path.join(root, heimdall_name)
-            make_executable(path)
-            return path
-
+    if os.path.exists(heimdall_path):
+        make_executable(heimdall_path)
+        return heimdall_path
     return None
+
+def ensure_adb_and_heimdall():
+    adb = get_adb_path()
+    heimdall = get_heimdall_path()
+
+    if not adb:
+        return False, "ADB not found in PATH."
+    if not heimdall:
+        return False, "Heimdall not found or failed to extract."
+    return True, "ADB and Heimdall are ready."
 

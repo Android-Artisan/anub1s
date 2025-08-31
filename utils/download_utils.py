@@ -1,23 +1,21 @@
 import requests
 import os
-import tempfile
 
-def download_file(url):
-    filename = url.split("/")[-1]
-    temp_dir = tempfile.gettempdir()
-    local_path = os.path.join(temp_dir, filename)
-
-    if os.path.exists(local_path):
-        return local_path
-
+def download_file_with_progress(url, dest_path, progress_callback=None):
     try:
-        r = requests.get(url, stream=True, timeout=60)
-        r.raise_for_status()
-        with open(local_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-        return local_path
-    except Exception:
-        return None
+        with requests.get(url, stream=True, timeout=60) as r:
+            r.raise_for_status()
+            total = int(r.headers.get('content-length', 0))
+            downloaded = 0
+            with open(dest_path, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if progress_callback and total > 0:
+                            percent = int((downloaded / total) * 100)
+                            progress_callback(percent)
+        return True, "Download complete."
+    except Exception as e:
+        return False, f"Download error: {e}"
 
