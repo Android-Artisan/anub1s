@@ -24,3 +24,11 @@ def get_device_info():
         "chip": run_adb_command(["shell", "getprop", "ro.chipname"]),
         "oneui": run_adb_command(["shell", "getprop", "ro.build.version.oneui"]),
     }
+
+def unlock_bootloader():
+    print("Rebooting to bootloader...")
+    subprocess.call(["adb", "reboot", "bootloader"])
+    input("Device in bootloader? Press Enter to continue unlocking...")
+
+    subprocess.call(["fastboot", "oem", "unlock"])
+    print("Unlock command sent.")
