@@ -1,89 +1,114 @@
-from PyQt6.QtWidgets import QWidget, QPushButton, QLabel, QVBoxLayout, QFileDialog, QComboBox, QLineEdit, QMessageBox
-from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import (
+    QWidget, QLabel, QVBoxLayout, QPushButton, QRadioButton, QButtonGroup,
+    QListWidget, QMessageBox, QLineEdit, QHBoxLayout, QFileDialog
+)
 from PyQt6.QtCore import Qt
-import subprocess
-import requests
-import os
 from utils.rom_list import get_official_roms_for_device
+from utils.flash_utils import flash_zip_rom
+from utils.download_utils import download_file
+import os
+import threading
 
-def show_rom_installer_screen(device_model=None):
-    window = QWidget()
-    window.setWindowTitle("Anub1s - Install Custom ROM")
-    window.setFixedSize(600, 500)
-    window.setStyleSheet("background-color: #121212; color: white;")
+class RomInstallerScreen(QWidget):
+    def __init__(self, device_model):
+        super().__init__()
+        self.setWindowTitle("Install Custom ROM")
+        self.setFixedSize(600, 600)
+        self.setStyleSheet("background-color: #121212; color: white;")
 
-    layout = QVBoxLayout()
+        self.device_model = device_model
 
-    title = QLabel("Install Custom ROM")
-    title.setFont(QFont("Arial", 20))
-    title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    layout.addWidget(title)
+        layout = QVBoxLayout()
 
-    # OFFICIAL
-    layout.addSpacing(10)
-    label1 = QLabel("📥 Install Official ROM")
-    label1.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    layout.addWidget(label1)
+        self.info_label = QLabel(f"Device model: {device_model}")
+        self.info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.info_label)
 
-    rom_selector = QComboBox()
-    rom_selector.setStyleSheet("background-color: white; color: black;")
-    if device_model:
-        roms = get_official_roms_for_device(device_model)
+        # Radio buttons
+        self.radio_official = QRadioButton("Official ROM")
+        self.radio_unofficial = QRadioButton("Unofficial ROM")
+        self.radio_official.setChecked(True)
+
+        radio_group = QButtonGroup()
+        radio_group.addButton(self.radio_official)
+        radio_group.addButton(self.radio_unofficial)
+
+        layout.addWidget(self.radio_official)
+        layout.addWidget(self.radio_unofficial)
+
+        # Official ROM list
+        self.rom_list = QListWidget()
+        layout.addWidget(self.rom_list)
+
+        # Unofficial input
+        self.url_input = QLineEdit()
+        self.url_input.setPlaceholderText("Enter unofficial ROM download URL here")
+        self.url_input.setDisabled(True)
+        layout.addWidget(self.url_input)
+
+        # Buttons
+        self.install_btn = QPushButton("Install ROM")
+        self.install_btn.clicked.connect(self.install_rom)
+        layout.addWidget(self.install_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        self.setLayout(layout)
+
+        # Signals for radio
+        self.radio_official.toggled.connect(self.toggle_mode)
+
+        self.load_official_roms()
+
+    def toggle_mode(self):
+        if self.radio_official.isChecked():
+            self.rom_list.setEnabled(True)
+            self.url_input.setDisabled(True)
+        else:
+            self.rom_list.setDisabled(True)
+            self.url_input.setEnabled(True)
+
+    def load_official_roms(self):
+        roms = get_official_roms_for_device(self.device_model)
+        self.rom_list.clear()
+        if not roms:
+            self.rom_list.addItem("(No official ROMs found for this device)")
+            self.rom_list.setDisabled(True)
+            return
         for rom in roms:
-            rom_selector.addItem(rom["name"], userData=rom["url"])
-    layout.addWidget(rom_selector)
+            item = QListWidgetItem(rom["name"])
+            item.setData(Qt.ItemDataRole.UserRole, rom["url"])
+            self.rom_list.addItem(item)
 
-    btn_official = QPushButton("Download & Sideload Official ROM")
-    btn_official.clicked.connect(lambda: handle_official_sideload(rom_selector))
-    layout.addWidget(btn_official, alignment=Qt.AlignmentFlag.AlignCenter)
+    def install_rom(self):
+        if self.radio_official.isChecked():
+            item = self.rom_list.currentItem()
+            if not item or not item.data(Qt.ItemDataRole.UserRole):
+                QMessageBox.warning(self, "Select ROM", "Please select a ROM from the list.")
+                return
+            url = item.data(Qt.ItemDataRole.UserRole)
+            # Download and flash in thread to avoid blocking
+            threading.Thread(target=self.download_and_flash, args=(url,), daemon=True).start()
+        else:
+            url = self.url_input.text().strip()
+            if not url:
+                QMessageBox.warning(self, "Input URL", "Please enter a ROM download URL.")
+                return
+            threading.Thread(target=self.download_and_flash, args=(url,), daemon=True).start()
 
-    # UNOFFICIAL
-    layout.addSpacing(20)
-    label2 = QLabel("🌐 Install Unofficial ROM (URL)")
-    label2.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    layout.addWidget(label2)
-
-    url_input = QLineEdit()
-    url_input.setPlaceholderText("Enter direct .zip URL")
-    layout.addWidget(url_input)
-
-    btn_unofficial = QPushButton("Download & Sideload Unofficial ROM")
-    btn_unofficial.clicked.connect(lambda: handle_unofficial_sideload(url_input.text()))
-    layout.addWidget(btn_unofficial, alignment=Qt.AlignmentFlag.AlignCenter)
-
-    window.setLayout(layout)
-    window.show()
-
-def handle_official_sideload(combo):
-    url = combo.currentData()
-    name = combo.currentText()
-    if not url:
-        QMessageBox.critical(None, "Error", "No ROM selected.")
-        return
-
-    sideload_from_url(url, name)
-
-def handle_unofficial_sideload(url):
-    if not url or not url.endswith(".zip"):
-        QMessageBox.critical(None, "Error", "Invalid URL or file format. Must end with .zip")
-        return
-    sideload_from_url(url, "Unofficial_ROM")
-
-def sideload_from_url(url, name="rom"):
-    os.makedirs("downloads", exist_ok=True)
-    local_path = os.path.join("downloads", f"{name}.zip")
-
-    try:
-        print(f"Downloading ROM: {url}")
-        r = requests.get(url, stream=True)
-        with open(local_path, "wb") as f:
-            for chunk in r.iter_content(1024):
-                f.write(chunk)
-        print("Download complete.")
-
-        subprocess.call(["adb", "reboot", "recovery"])
-        input("In recovery? Select 'ADB sideload' then press Enter...")
-        subprocess.call(["adb", "sideload", local_path])
-
-    except Exception as e:
-        QMessageBox.critical(None, "Download Error", f"Failed to download ROM:\n{e}")
+    def download_and_flash(self, url):
+        self.install_btn.setDisabled(True)
+        self.install_btn.setText("Downloading...")
+        try:
+            # Download zip to temp folder
+            local_path = download_file(url)
+            if not local_path:
+                raise Exception("Download failed.")
+            self.install_btn.setText("Flashing...")
+            # Flash zip ROM via ADB sideload or custom method
+            flash_zip_rom(local_path)
+            self.install_btn.setText("Done!")
+            QMessageBox.information(self, "Success", "ROM installed successfully!")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to install ROM:\n{e}")
+        finally:
+            self.install_btn.setEnabled(True)
+            self.install_btn.setText("Install ROM")
