@@ -1,142 +1,162 @@
+# gui/device_check_screen.py
+
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QPushButton, QMessageBox, QProgressBar
+    QWidget, QLabel, QPushButton, QVBoxLayout, QMessageBox, QApplication
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import QTimer, Qt
 from utils.adb_utils import get_device_info
-from utils.flash_utils import flash_recovery_img
 from utils.twrp_scraper import download_twrp_image
-from gui.animations import fade_in, fade_out
-from gui.rom_installer_screen import RomInstallerScreen
+from utils.flash_utils import flash_recovery_with_heimdall
+from utils.adb_heimdall_manager import ensure_adb_and_heimdall
 
-class DeviceCheckThread(QThread):
-    device_info_signal = pyqtSignal(dict)
-    error_signal = pyqtSignal(str)
-
-    def run(self):
-        info = get_device_info()
-        if info:
-            self.device_info_signal.emit(info)
-        else:
-            self.error_signal.emit("No Samsung device detected. Please connect a Samsung device with ADB enabled.")
 
 class DeviceCheckScreen(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Anub1s - Device Check")
-        self.setFixedSize(600, 450)
-        self.setStyleSheet("""
-            background-color: #121212;
-            color: #eeeeee;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        """)
-
-        self.layout = QVBoxLayout()
-        self.layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
-
-        self.status_label = QLabel("Detecting device...")
-        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status_label.setStyleSheet("font-size: 20px; font-weight: bold;")
-        self.layout.addWidget(self.status_label)
-
-        self.progress = QProgressBar()
-        self.progress.setRange(0, 0)  # Indeterminate progress
-        self.layout.addWidget(self.progress)
-
-        self.device_info_label = QLabel("")
-        self.device_info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.device_info_label.setWordWrap(True)
-        self.device_info_label.setStyleSheet("font-size: 16px;")
-        self.layout.addWidget(self.device_info_label)
-
-        self.flash_twrp_btn = QPushButton("Flash TWRP Recovery")
-        self.flash_twrp_btn.setFixedWidth(250)
-        self.flash_twrp_btn.setEnabled(False)
-        self.flash_twrp_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #1E88E5;
-                border-radius: 8px;
-                padding: 12px 20px;
-                color: white;
-                font-weight: bold;
-                font-size: 16px;
-            }
-            QPushButton:disabled {
-                background-color: #555555;
-                color: #aaaaaa;
-            }
-            QPushButton:hover:!disabled {
-                background-color: #1565C0;
-            }
-        """)
-        self.flash_twrp_btn.clicked.connect(self.flash_twrp)
-
-        self.next_btn = QPushButton("Next: Install ROM")
-        self.next_btn.setFixedWidth(250)
-        self.next_btn.setEnabled(False)
-        self.next_btn.setStyleSheet(self.flash_twrp_btn.styleSheet())
-        self.next_btn.clicked.connect(self.go_to_rom_installer)
-
-        self.layout.addWidget(self.flash_twrp_btn, alignment=Qt.AlignmentFlag.AlignCenter)
-        self.layout.addWidget(self.next_btn, alignment=Qt.AlignmentFlag.AlignCenter)
-
-        self.setLayout(self.layout)
-
+    def __init__(self, parent=None):
+        super().__init__(parent)
         self.device_info = None
 
-        self.check_thread = DeviceCheckThread()
-        self.check_thread.device_info_signal.connect(self.on_device_detected)
-        self.check_thread.error_signal.connect(self.on_error)
-        self.check_thread.start()
+        self.init_ui()
+        self.apply_styles()
+        self.animation_timer = QTimer()
+        self.animation_step = 0
+        self.animation_timer.timeout.connect(self._animate_status)
 
-    def on_device_detected(self, info):
-        self.progress.setRange(0, 1)
-        self.status_label.setText("Device detected!")
-        self.device_info = info
+        # Auto check ADB/Heimdall, then start device check
+        self.status_label.setText("Checking tools...")
+        QApplication.processEvents()
 
-        info_text = (
-            f"Model: {info.get('device')}\n"
-            f"Chipset: {info.get('chipset')}\n"
-            f"Android Version: {info.get('android_version')}\n"
-            f"One UI Version: {info.get('oneui_version')}"
-        )
-        self.device_info_label.setText(info_text)
-        self.flash_twrp_btn.setEnabled(True)
-        self.next_btn.setEnabled(True)
+        tools_ok, msg = ensure_adb_and_heimdall()
+        if not tools_ok:
+            QMessageBox.critical(self, "Tool Error", msg)
+            self.status_label.setText("ADB/Heimdall setup failed.")
+            return
 
-    def on_error(self, message):
-        self.progress.setRange(0, 1)
-        self.status_label.setText("Error")
-        self.device_info_label.setText(message)
+        self.check_device()
+
+    def init_ui(self):
+        self.setWindowTitle("Anub1s - Device Check")
+        self.resize(500, 300)
+
+        self.status_label = QLabel("Ready to check device", self)
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_label.setWordWrap(True)
+
+        self.check_btn = QPushButton("🔍 Check Device", self)
+        self.check_btn.clicked.connect(self.check_device)
+
+        self.flash_twrp_btn = QPushButton("⚡ Flash TWRP Recovery", self)
         self.flash_twrp_btn.setEnabled(False)
-        self.next_btn.setEnabled(False)
+        self.flash_twrp_btn.clicked.connect(self.flash_twrp)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setSpacing(20)
+        layout.addWidget(self.status_label)
+        layout.addWidget(self.check_btn)
+        layout.addWidget(self.flash_twrp_btn)
+
+        self.setLayout(layout)
+
+    def apply_styles(self):
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #1e1e1e;
+                color: #ffffff;
+                font-family: 'Segoe UI', sans-serif;
+                font-size: 14px;
+            }
+
+            QPushButton {
+                background-color: #2d89ef;
+                border: none;
+                color: white;
+                padding: 10px;
+                border-radius: 6px;
+            }
+
+            QPushButton:hover {
+                background-color: #1b6acb;
+            }
+
+            QPushButton:disabled {
+                background-color: #444;
+                color: #aaa;
+            }
+
+            QLabel {
+                font-size: 15px;
+            }
+        """)
+
+    def _animate_status(self):
+        dots = "." * (self.animation_step % 4)
+        base_text = self.status_label.text().split('.')[0]
+        self.status_label.setText(f"{base_text}{dots}")
+        self.animation_step += 1
+
+    def check_device(self):
+        self.status_label.setText("Checking device")
+        self.animation_step = 0
+        self.animation_timer.start(400)
+        self.check_btn.setEnabled(False)
+        self.flash_twrp_btn.setEnabled(False)
+        QApplication.processEvents()
+
+        info = get_device_info()
+        self.animation_timer.stop()
+
+        if not info:
+            self.status_label.setText("No device detected or not a Samsung device.")
+            QMessageBox.warning(self, "Device Not Found", "Please connect a Samsung device with ADB enabled.")
+            self.check_btn.setEnabled(True)
+            return
+
+        self.device_info = info
+        model = info.get("device", "Unknown")
+        chipset = info.get("chipset", "Unknown")
+        oneui_ver = info.get("oneui_version", "")
+
+        self.status_label.setText(f"✅ Detected: {model} | Chipset: {chipset}")
+
+        try:
+            if int(oneui_ver) >= 800000:
+                QMessageBox.information(self, "Bootloader", "Bootloader unlock not supported on this OneUI version.")
+        except Exception:
+            pass
+
+        self.flash_twrp_btn.setEnabled(True)
+        self.check_btn.setEnabled(True)
 
     def flash_twrp(self):
         if not self.device_info:
-            QMessageBox.warning(self, "Error", "Device info not available.")
+            QMessageBox.warning(self, "Error", "No device info available. Please check device first.")
             return
 
         self.flash_twrp_btn.setEnabled(False)
-        self.status_label.setText("Downloading TWRP recovery...")
+        self.check_btn.setEnabled(False)
+        self.status_label.setText("📥 Downloading TWRP recovery...")
+
+        QApplication.processEvents()
 
         img_path = download_twrp_image(self.device_info.get("device"), variant="stable")
         if not img_path:
-            QMessageBox.warning(self, "Error", "TWRP image not found for your device.")
-            self.status_label.setText("Device detected!")
+            self.status_label.setText("❌ TWRP not found.")
+            QMessageBox.warning(self, "Not Found", "TWRP recovery not found for this model.")
             self.flash_twrp_btn.setEnabled(True)
+            self.check_btn.setEnabled(True)
             return
 
-        self.status_label.setText("Flashing TWRP recovery...")
-        success = flash_recovery_img(img_path)
-        if success:
-            QMessageBox.information(self, "Success", "TWRP recovery flashed successfully.")
-            self.status_label.setText("Device detected!")
-        else:
-            QMessageBox.warning(self, "Failed", "Failed to flash TWRP recovery.")
-            self.status_label.setText("Device detected!")
-        self.flash_twrp_btn.setEnabled(True)
+        self.status_label.setText("⚡ Flashing recovery via Heimdall... Please wait.")
+        QApplication.processEvents()
 
-    def go_to_rom_installer(self):
-        self.rom_installer = RomInstallerScreen(self.device_info)
-        fade_out(self)
-        fade_in(self.rom_installer)
+        success, message = flash_recovery_with_heimdall(img_path)
+        if success:
+            QMessageBox.information(self, "Success", message)
+            self.status_label.setText("✅ TWRP flashed successfully!")
+        else:
+            QMessageBox.warning(self, "Failed", message)
+            self.status_label.setText("❌ Flash failed.")
+
+        self.flash_twrp_btn.setEnabled(True)
+        self.check_btn.setEnabled(True)
 
