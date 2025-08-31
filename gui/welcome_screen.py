@@ -14,16 +14,6 @@ def run_app():
 
     layout = QVBoxLayout()
 
-    # Optional logo
-    logo = QLabel()
-    try:
-        pixmap = QPixmap("assets/logo.png")
-        logo.setPixmap(pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio))
-        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(logo)
-    except:
-        pass
-
     title = QLabel("Anub1s")
     title.setFont(QFont("Arial", 32, QFont.Weight.Bold))
     title.setAlignment(Qt.AlignmentFlag.AlignCenter)
