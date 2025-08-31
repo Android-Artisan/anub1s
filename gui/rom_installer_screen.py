@@ -1,114 +1,176 @@
 from PyQt6.QtWidgets import (
-    QWidget, QLabel, QVBoxLayout, QPushButton, QRadioButton, QButtonGroup,
-    QListWidget, QMessageBox, QLineEdit, QHBoxLayout, QFileDialog
+    QWidget, QVBoxLayout, QLabel, QPushButton, QMessageBox,
+    QComboBox, QRadioButton, QButtonGroup, QHBoxLayout
 )
 from PyQt6.QtCore import Qt
-from utils.rom_list import get_official_roms_for_device
-from utils.flash_utils import flash_zip_rom
 from utils.download_utils import download_file
-import os
-import threading
+from utils.flash_utils import flash_zip_rom
+from gui.animations import fade_in, fade_out
+
+OFFICIAL_ROMS_JSON = "https://raw.githubusercontent.com/Android-Artisan/anub1s/refs/heads/main/official_roms.json"
+
+import requests
 
 class RomInstallerScreen(QWidget):
-    def __init__(self, device_model):
+    def __init__(self, device_info):
         super().__init__()
-        self.setWindowTitle("Install Custom ROM")
-        self.setFixedSize(600, 600)
-        self.setStyleSheet("background-color: #121212; color: white;")
+        self.setWindowTitle("Anub1s - ROM Installer")
+        self.setFixedSize(600, 450)
+        self.setStyleSheet("""
+            background-color: #121212;
+            color: #eeeeee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        """)
 
-        self.device_model = device_model
+        self.device_info = device_info
 
-        layout = QVBoxLayout()
+        self.layout = QVBoxLayout()
+        self.layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
 
-        self.info_label = QLabel(f"Device model: {device_model}")
-        self.info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.info_label)
+        title = QLabel("Install Custom ROM")
+        title.setStyleSheet("font-size: 28px; font-weight: bold;")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # Radio buttons
-        self.radio_official = QRadioButton("Official ROM")
-        self.radio_unofficial = QRadioButton("Unofficial ROM")
-        self.radio_official.setChecked(True)
+        self.layout.addWidget(title)
+        self.layout.addSpacing(20)
 
-        radio_group = QButtonGroup()
-        radio_group.addButton(self.radio_official)
-        radio_group.addButton(self.radio_unofficial)
+        self.rom_type_label = QLabel("Choose ROM type:")
+        self.rom_type_label.setStyleSheet("font-size: 18px;")
+        self.layout.addWidget(self.rom_type_label)
 
-        layout.addWidget(self.radio_official)
-        layout.addWidget(self.radio_unofficial)
+        self.official_radio = QRadioButton("Official ROMs")
+        self.unofficial_radio = QRadioButton("Unofficial ROMs")
 
-        # Official ROM list
-        self.rom_list = QListWidget()
-        layout.addWidget(self.rom_list)
+        self.radio_group = QButtonGroup()
+        self.radio_group.addButton(self.official_radio)
+        self.radio_group.addButton(self.unofficial_radio)
+        self.official_radio.setChecked(True)
 
-        # Unofficial input
-        self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText("Enter unofficial ROM download URL here")
-        self.url_input.setDisabled(True)
-        layout.addWidget(self.url_input)
+        radio_layout = QHBoxLayout()
+        radio_layout.addWidget(self.official_radio)
+        radio_layout.addWidget(self.unofficial_radio)
+        self.layout.addLayout(radio_layout)
 
-        # Buttons
+        self.rom_combo = QComboBox()
+        self.rom_combo.setFixedWidth(400)
+        self.layout.addWidget(self.rom_combo, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        self.url_label = QLabel("")
+        self.url_label.setWordWrap(True)
+        self.url_label.hide()
+        self.layout.addWidget(self.url_label)
+
         self.install_btn = QPushButton("Install ROM")
+        self.install_btn.setFixedWidth(200)
+        self.install_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1E88E5;
+                border-radius: 8px;
+                padding: 12px 20px;
+                color: white;
+                font-weight: bold;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                background-color: #1565C0;
+            }
+        """)
         self.install_btn.clicked.connect(self.install_rom)
-        layout.addWidget(self.install_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.layout.addWidget(self.install_btn, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        self.setLayout(layout)
+        self.setLayout(self.layout)
 
-        # Signals for radio
-        self.radio_official.toggled.connect(self.toggle_mode)
+        self.official_radio.toggled.connect(self.on_rom_type_changed)
+        self.rom_combo.currentIndexChanged.connect(self.on_rom_selected)
 
+        self.roms = {}
         self.load_official_roms()
 
-    def toggle_mode(self):
-        if self.radio_official.isChecked():
-            self.rom_list.setEnabled(True)
-            self.url_input.setDisabled(True)
-        else:
-            self.rom_list.setDisabled(True)
-            self.url_input.setEnabled(True)
-
     def load_official_roms(self):
-        roms = get_official_roms_for_device(self.device_model)
-        self.rom_list.clear()
-        if not roms:
-            self.rom_list.addItem("(No official ROMs found for this device)")
-            self.rom_list.setDisabled(True)
-            return
-        for rom in roms:
-            item = QListWidgetItem(rom["name"])
-            item.setData(Qt.ItemDataRole.UserRole, rom["url"])
-            self.rom_list.addItem(item)
+        self.rom_combo.clear()
+        self.url_label.hide()
+        self.install_btn.setEnabled(False)
+        try:
+            r = requests.get(OFFICIAL_ROMS_JSON, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            model = self.device_info.get("device").upper().replace(" ", "")
+            roms_for_device = data.get(model, [])
+            self.roms = {rom['name']: rom['url'] for rom in roms_for_device}
+            if not self.roms:
+                self.rom_combo.addItem("No official ROMs available for your device.")
+                self.install_btn.setEnabled(False)
+            else:
+                for name in self.roms.keys():
+                    self.rom_combo.addItem(name)
+                self.install_btn.setEnabled(True)
+        except Exception as e:
+            self.rom_combo.addItem("Failed to load official ROMs.")
+            self.install_btn.setEnabled(False)
+
+    def on_rom_type_changed(self, checked):
+        if checked:
+            # Official ROMs
+            self.rom_combo.show()
+            self.url_label.hide()
+            self.load_official_roms()
+        else:
+            # Unofficial ROMs
+            self.rom_combo.clear()
+            self.url_label.setText("Please enter unofficial ROM URL in the input box below.")
+            self.url_label.show()
+            self.install_btn.setEnabled(True)
+
+    def on_rom_selected(self, index):
+        if self.official_radio.isChecked():
+            name = self.rom_combo.currentText()
+            url = self.roms.get(name)
+            if url:
+                self.url_label.setText(f"Download URL:\n{url}")
+                self.url_label.show()
+            else:
+                self.url_label.hide()
 
     def install_rom(self):
-        if self.radio_official.isChecked():
-            item = self.rom_list.currentItem()
-            if not item or not item.data(Qt.ItemDataRole.UserRole):
-                QMessageBox.warning(self, "Select ROM", "Please select a ROM from the list.")
+        if self.official_radio.isChecked():
+            rom_name = self.rom_combo.currentText()
+            rom_url = self.roms.get(rom_name)
+            if not rom_url:
+                QMessageBox.warning(self, "Error", "Select a valid ROM.")
                 return
-            url = item.data(Qt.ItemDataRole.UserRole)
-            # Download and flash in thread to avoid blocking
-            threading.Thread(target=self.download_and_flash, args=(url,), daemon=True).start()
         else:
-            url = self.url_input.text().strip()
-            if not url:
-                QMessageBox.warning(self, "Input URL", "Please enter a ROM download URL.")
-                return
-            threading.Thread(target=self.download_and_flash, args=(url,), daemon=True).start()
+            # For simplicity, no input box for unofficial URL yet
+            QMessageBox.information(self, "Info", "Unofficial ROM installation not implemented yet.")
+            return
 
-    def download_and_flash(self, url):
-        self.install_btn.setDisabled(True)
-        self.install_btn.setText("Downloading...")
-        try:
-            # Download zip to temp folder
-            local_path = download_file(url)
-            if not local_path:
-                raise Exception("Download failed.")
-            self.install_btn.setText("Flashing...")
-            # Flash zip ROM via ADB sideload or custom method
-            flash_zip_rom(local_path)
-            self.install_btn.setText("Done!")
-            QMessageBox.information(self, "Success", "ROM installed successfully!")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to install ROM:\n{e}")
-        finally:
+        self.install_btn.setEnabled(False)
+        self.status_dialog = QMessageBox(self)
+        self.status_dialog.setWindowTitle("Downloading ROM")
+        self.status_dialog.setText("Downloading ROM. Please wait...")
+        self.status_dialog.setStandardButtons(QMessageBox.StandardButton.NoButton)
+        self.status_dialog.show()
+
+        local_zip = download_file(rom_url)
+        self.status_dialog.hide()
+
+        if not local_zip:
+            QMessageBox.warning(self, "Error", "Failed to download ROM.")
             self.install_btn.setEnabled(True)
-            self.install_btn.setText("Install ROM")
+            return
+
+        self.status_dialog = QMessageBox(self)
+        self.status_dialog.setWindowTitle("Flashing ROM")
+        self.status_dialog.setText("Flashing ROM. Please wait...")
+        self.status_dialog.setStandardButtons(QMessageBox.StandardButton.NoButton)
+        self.status_dialog.show()
+
+        success = flash_zip_rom(local_zip)
+        self.status_dialog.hide()
+
+        if success:
+            QMessageBox.information(self, "Success", "ROM installed successfully.")
+        else:
+            QMessageBox.warning(self, "Failed", "Failed to flash ROM.")
+
+        self.install_btn.setEnabled(True)
+

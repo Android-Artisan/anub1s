@@ -1,59 +1,42 @@
 import requests
-from bs4 import BeautifulSoup
 import os
+import tempfile
 
-def download_twrp_image(model, download_dir="downloads"):
-    model = model.lower().replace(" ", "")
-    base_url = "https://twrp.me"
-    devices_page = f"{base_url}/Devices/"
+TWRP_JSON_URL = "https://raw.githubusercontent.com/Android-Artisan/anub1s/refs/heads/main/twrp_recoveries.json"
 
+def get_twrp_links(device_model: str):
     try:
-        print(f"Searching TWRP for: {model}")
-        page = requests.get(devices_page)
-        soup = BeautifulSoup(page.text, "html.parser")
+        resp = requests.get(TWRP_JSON_URL, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        devices = data.get("devices", {})
+        device_data = devices.get(device_model.upper())
+        if not device_data:
+            return {}
+        return device_data.get("twrp_images", {})
+    except Exception:
+        return {}
 
-        links = soup.find_all("a", href=True)
-        match = None
-
-        for link in links:
-            href = link["href"]
-            if "/Devices/" in href and model in href.lower():
-                match = href
-                break
-
-        if not match:
-            print("No matching TWRP device page found.")
-            return None
-
-        device_url = base_url + match
-        print(f"Found TWRP device page: {device_url}")
-
-        device_page = requests.get(device_url)
-        soup = BeautifulSoup(device_page.text, "html.parser")
-        img_link = None
-
-        for a in soup.find_all("a", href=True):
-            if a["href"].endswith(".img") and "twrp" in a["href"]:
-                img_link = a["href"]
-                break
-
-        if not img_link:
-            print("No .img file found.")
-            return None
-
-        img_url = base_url + img_link if img_link.startswith("/") else img_link
-        os.makedirs(download_dir, exist_ok=True)
-        local_path = os.path.join(download_dir, os.path.basename(img_url))
-
-        print(f"Downloading TWRP from {img_url} ...")
-        r = requests.get(img_url, stream=True)
-        with open(local_path, "wb") as f:
-            for chunk in r.iter_content(1024):
-                f.write(chunk)
-
-        print(f"Downloaded TWRP to {local_path}")
-        return local_path
-
-    except Exception as e:
-        print(f"Error: {e}")
+def download_twrp_image(device_model: str, variant="stable") -> str | None:
+    links = get_twrp_links(device_model)
+    if variant not in links:
         return None
+
+    url = links[variant]
+    filename = url.split("/")[-1]
+    temp_dir = tempfile.gettempdir()
+    local_path = os.path.join(temp_dir, filename)
+
+    if not os.path.exists(local_path):
+        try:
+            r = requests.get(url, stream=True, timeout=60)
+            r.raise_for_status()
+            with open(local_path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+        except Exception:
+            return None
+
+    return local_path
+

@@ -1,0 +1,12 @@
+{
+  "devices": {
+    "SM-G986B": {
+      "codename": "y2s",
+      "twrp_images": {
+        "stable": "https://dl.twrp.me/y2s/twrp-3.7.0_11-0-y2s.img",
+        "latest": "https://dl.twrp.me/y2s/twrp-3.7.0_11-0-y2s.img"
+      }
+    }
+  }
+}
+
