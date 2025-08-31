@@ -15,7 +15,7 @@ def show_device_check_screen(app, previous_window):
     window.setStyleSheet("background-color: #121212; color: white;")
 
     layout = QVBoxLayout()
-    title = QLabel("Detecting Samsung Device...")
+    title = QLabel("🔍 Detecting Samsung Device...")
     title.setFont(QFont("Arial", 18))
     title.setAlignment(Qt.AlignmentFlag.AlignCenter)
     layout.addWidget(title)
@@ -23,18 +23,22 @@ def show_device_check_screen(app, previous_window):
     info = get_device_info()
 
     if info is None:
-        error = QLabel("No Samsung device detected. Is ADB enabled?")
+        error = QLabel("❌ No Samsung device detected. Make sure ADB is enabled.")
         error.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(error)
     else:
+        # Display info
         for key, val in info.items():
             lbl = QLabel(f"{key.capitalize()}: {val}")
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(lbl)
 
+        # Convert One UI version to numeric for checking
         oneui = int(info["oneui"].replace(".", "").ljust(6, "0"))
+
+        # Show unlock bootloader option if version is valid
         if oneui >= 800000:
-            lock_msg = QLabel("❌ Bootloader unlocking not supported on One UI 8+.")
+            lock_msg = QLabel("⚠️ Bootloader unlocking not supported on One UI 8+.")
             lock_msg.setStyleSheet("color: red;")
             lock_msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(lock_msg)
@@ -43,13 +47,15 @@ def show_device_check_screen(app, previous_window):
             unlock_btn.clicked.connect(unlock_bootloader)
             layout.addWidget(unlock_btn, alignment=Qt.AlignmentFlag.AlignCenter)
 
-            flash_btn = QPushButton("💾 Download & Flash TWRP")
-            flash_btn.clicked.connect(lambda: flash_twrp(info["device"]))
-            layout.addWidget(flash_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        # Flash TWRP
+        flash_btn = QPushButton("💾 Download & Flash TWRP")
+        flash_btn.clicked.connect(lambda: flash_twrp(info["device"]))
+        layout.addWidget(flash_btn, alignment=Qt.AlignmentFlag.AlignCenter)
 
-            rom_btn = QPushButton("📦 Install ROM")
-            rom_btn.clicked.connect(show_rom_installer_screen)
-            layout.addWidget(rom_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        # Install Custom ROM (official/unofficial)
+        rom_btn = QPushButton("📦 Install Custom ROM")
+        rom_btn.clicked.connect(lambda: show_rom_installer_screen(info["device"]))
+        layout.addWidget(rom_btn, alignment=Qt.AlignmentFlag.AlignCenter)
 
     window.setLayout(layout)
     window.show()
