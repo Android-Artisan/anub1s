@@ -1,46 +1,37 @@
-from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QVBoxLayout
-from PyQt6.QtGui import QFont, QPixmap
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton
 from PyQt6.QtCore import Qt
-from gui.device_check_screen import show_device_check_screen
-import sys
+from gui.device_check_screen import DeviceCheckScreen
 
-def run_app():
-    app = QApplication(sys.argv)
+class WelcomeScreen(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Anub1s - Welcome")
+        self.setFixedSize(600, 400)
+        self.setStyleSheet("background-color: #121212; color: white;")
 
-    window = QWidget()
-    window.setWindowTitle("Anub1s")
-    window.setFixedSize(600, 400)
-    window.setStyleSheet("background-color: #121212; color: white;")
+        layout = QVBoxLayout()
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-    layout = QVBoxLayout()
+        title = QLabel("Anub1s")
+        title.setStyleSheet("font-size: 32px; font-weight: bold;")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-    title = QLabel("Anub1s")
-    title.setFont(QFont("Arial", 32, QFont.Weight.Bold))
-    title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        desc = QLabel("Rooting Samsung devices has never been easier.")
+        desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        desc.setStyleSheet("font-size: 18px;")
 
-    subtitle = QLabel("Rooting has never been easier.")
-    subtitle.setFont(QFont("Arial", 16))
-    subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        start_btn = QPushButton("Start")
+        start_btn.setFixedWidth(150)
+        start_btn.clicked.connect(self.go_to_device_check)
 
-    button = QPushButton("Get Started")
-    button.setStyleSheet("""
-        QPushButton {
-            background-color: #1f1f1f;
-            color: white;
-            padding: 10px 20px;
-            font-size: 16px;
-        }
-        QPushButton:hover {
-            background-color: #333;
-        }
-    """)
-    button.clicked.connect(lambda: show_device_check_screen(app, window))
+        layout.addWidget(title)
+        layout.addWidget(desc)
+        layout.addSpacing(30)
+        layout.addWidget(start_btn, alignment=Qt.AlignmentFlag.AlignCenter)
 
-    layout.addWidget(title)
-    layout.addWidget(subtitle)
-    layout.addSpacing(20)
-    layout.addWidget(button, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.setLayout(layout)
 
-    window.setLayout(layout)
-    window.show()
-    app.exec()
+    def go_to_device_check(self):
+        self.device_screen = DeviceCheckScreen()
+        self.device_screen.show()
+        self.close()
