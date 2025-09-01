@@ -20,7 +20,7 @@ class WelcomeScreen(QWidget):
         self.title_label.setStyleSheet("font-size: 48px; font-weight: bold;")
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self.desc_label = QLabel("Rooting Samsung devices has never been easier.")
+        self.desc_label = QLabel("Flashing Samsung devices has never been easier.")
         self.desc_label.setStyleSheet("font-size: 18px;")
         self.desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 

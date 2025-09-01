@@ -5,7 +5,9 @@ from PyQt6.QtCore import QTimer, Qt
 from utils.adb_utils import get_device_info
 from utils.twrp_scraper import download_twrp_tar
 from utils.flash_utils import flash_recovery_with_heimdall, reboot_to_download_mode
+
 from utils.adb_heimdall_manager import get_heimdall_path, ensure_adb_and_heimdall
+from gui.animations import fade_in, fade_out
 
 
 class DeviceCheckScreen(QWidget):
@@ -136,7 +138,36 @@ class DeviceCheckScreen(QWidget):
         if not self.device_info:
             QMessageBox.warning(self, "Error", "No device info available. Please check device first.")
             return
-
+        if not self.device_info:
+            QMessageBox.warning(self, "Error", "No device info detected.")
+            return
+        model = self.device_info.get("device")
+        if not model:
+            QMessageBox.warning(self, "Error", "Device model not found.")
+            return
+        if self.cached_tar_path:
+            self.status_label.setText(f"TWRP already downloaded: {self.cached_tar_path}")
+            self.flash_twrp_btn.setEnabled(True)
+        else:
+            self.status_label.setText(f"Downloading TWRP for {model}...")
+            QApplication.processEvents()
+            from utils.twrp_scraper import download_twrp_tar
+            tar_path = download_twrp_tar(model)
+            if tar_path:
+                self.cached_tar_path = tar_path
+                self.status_label.setText(f"TWRP downloaded: {tar_path}")
+                self.flash_twrp_btn.setEnabled(True)
+            else:
+                self.status_label.setText("TWRP download failed.")
+                QMessageBox.warning(self, "Download Failed", "Could not download TWRP for this device.")
+        # Reboot to download mode only after a successful download (or if already downloaded)
+        if self.cached_tar_path:
+            from utils.flash_utils import reboot_to_download_mode
+            rebooted = reboot_to_download_mode()
+            if rebooted:
+                QMessageBox.information(self, "Rebooted", "Device is rebooting to download mode. Please confirm when device is in download mode to continue flashing.")
+            else:
+                QMessageBox.warning(self, "Reboot Failed", "Could not reboot device to download mode. Please do it manually.")
         self.download_twrp_btn.setEnabled(False)
         self.check_btn.setEnabled(False)
         self.flash_twrp_btn.setEnabled(False)
@@ -153,6 +184,13 @@ class DeviceCheckScreen(QWidget):
             self.check_btn.setEnabled(True)
             return
 
+        from gui.rom_installer_screen import RomInstallerScreen
+        if not self.device_info:
+            QMessageBox.warning(self, "Error", "No device info available.")
+            return
+        self.rom_installer = RomInstallerScreen(self.device_info)
+        fade_out(self)
+        fade_in(self.rom_installer)
         self.cached_tar_path = tar_path
         self.status_label.setText(f"✅ Downloaded and cached TWRP tar for {device_model}.")
         QMessageBox.information(self, "Downloaded", "TWRP tar downloaded successfully.\n\nNow you can flash it using the Flash button.")
@@ -164,7 +202,31 @@ class DeviceCheckScreen(QWidget):
         if not self.cached_tar_path:
             QMessageBox.warning(self, "Error", "No TWRP recovery tar cached. Please download it first.")
             return
-
+        if not self.cached_tar_path:
+            QMessageBox.warning(self, "Error", "No TWRP tar file downloaded.")
+            return
+        confirm = QMessageBox.question(
+            self, "Confirm Download Mode",
+            "Is your device in download mode?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            self.status_label.setText("Please put your device in download mode and try again.")
+            return
+        from utils.flash_utils import get_heimdall_path, flash_recovery_with_heimdall
+        heimdall_path = get_heimdall_path()
+        if not heimdall_path:
+            QMessageBox.warning(self, "Error", "Heimdall not found.")
+            return
+        self.status_label.setText("Flashing TWRP recovery...")
+        QApplication.processEvents()
+        success, msg = flash_recovery_with_heimdall(heimdall_path, self.cached_tar_path)
+        if success:
+            self.status_label.setText("TWRP flashed successfully!")
+            QMessageBox.information(self, "Success", "TWRP recovery flashed successfully.")
+        else:
+            self.status_label.setText("TWRP flash failed.")
+            QMessageBox.warning(self, "Flash Failed", f"TWRP flash failed: {msg}")
         self.flash_twrp_btn.setEnabled(False)
         self.check_btn.setEnabled(False)
         self.download_twrp_btn.setEnabled(False)
